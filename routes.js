@@ -117,10 +117,8 @@ router.post('/courses', authenticateUser, asyncHandler(async (req,res) => {
 // PUT route that will update a specific course 
 router.put('/courses/:id', authenticateUser, asyncHandler(async (req,res) => {
   const user = req.currentUser;
-  console.log(user.id);
   const course = await Course.findByPk(req.params.id);
   if (course) {
-    console.log(course.userId);
     if (course.userId === user.id) {
       const newCourse = req.body;
       const errors = [];
@@ -130,18 +128,22 @@ router.put('/courses/:id', authenticateUser, asyncHandler(async (req,res) => {
       if (!newCourse.description) {
         errors.push('Please provide a course description')
       }
+      if (newCourse.estimatedTime) {
+        course.estimatedTime = newCourse.estimatedTime;
+      }
+      if (newCourse.materialsNeeded) {
+        course.materialsNeeded = newCourse.materialsNeeded;
+      }
       if (errors.length > 0) {
         res.status(400).json({ errors });
       } else {
         course.title = newCourse.title;
         course.description = newCourse.description;
-        course.estimatedTime = newCourse.estimatedTime;
-        course.materialsNeeded = newCourse.materialsNeeded;
         await course.save();
         res.status(204).end();
       }
     } else {
-      res.status(403);
+      res.status(403).end();
     }
   } else {
     res.status(404).json({ "message": "Page not found" });

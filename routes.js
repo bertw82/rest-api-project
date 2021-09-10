@@ -3,23 +3,18 @@
 const express = require('express');
 const router = express.Router();
 const { User, Course } = require('./models');
+const { asyncHandler } = require('./middleware/asyncHandler');
+const { authenticateUser } = require('./middleware/authUser');
 const bcrypt = require('bcryptjs');
 
-// Handler function to wrap each route.
-function asyncHandler(cb) {
-  return async (req, res, next) => {
-    try {
-      await cb(req, res, next);
-    } catch (error) {
-      // Forward error to the global error handler
-      next(error);
-    }
-  }
-}
 
 // GET route to return all properties and values from an authenticated user 
-router.get('/users', asyncHandler(async (req,res) => {
-  let users = await User.findAll();
+router.get('/users', authenticateUser, asyncHandler(async (req,res) => {
+  let users = await User.findAll({
+    attributes: {
+      exclude: ['password', 'createdAt', 'updatedAt']
+    }
+  });
   res.json(users);
 }));
 
@@ -27,6 +22,7 @@ router.get('/users', asyncHandler(async (req,res) => {
 router.post('/users', asyncHandler(async (req,res) => {
   try {
     const user = req.body;
+    console.log(user);
     const errors = [];
     if (!user.firstName) {
       errors.push('Please provide a first name');
@@ -37,13 +33,10 @@ router.post('/users', asyncHandler(async (req,res) => {
     if (!user.emailAddress) {
       errors.push('Please provide an email address');
     }
-    let password = user.password;
-    if (!password) {
+    if (!user.password) {
       errors.push('Please provide a password');
-    } else if (password.length < 8 || password.length > 20) {
-      errors.push('Your password should be between 8 and 20 characters')
     } else {
-      user.password = bcrypt.hashSync(password, 10);
+      user.password = bcrypt.hashSync(user.password, 10);
     }
     
     if (errors.length > 0) {
@@ -54,7 +47,7 @@ router.post('/users', asyncHandler(async (req,res) => {
     }
   } catch (error) {
     console.log(error.name, error.stack);
-    if (error.name === 'SequelizeValidationError' || error.name === 'SequelizeUniqueConstraintError') {
+    if (error.name === 'SequelizeUniqueConstraintError') {
         const errors = error.errors.map(err => err.message);
         res.status(400).json({ errors });   
       } else {
@@ -69,14 +62,23 @@ router.get('/courses', asyncHandler(async (req,res) => {
     include: [{
       model: User,
       as: 'user',
-    }]
+    }],
+    attributes: {
+      exclude: ['createdAt', 'updatedAt']
+    }
   });
   res.status(200).json(courses.map(course => course.get({plain:true})));
 }));
 
 // GET route that will return a specific course including the user associated with that course
 router.get('/courses/:id', asyncHandler(async (req,res) => {
-  const course = await Course.findByPk(req.params.id);
+  const course = await Course.findByPk(req.params.id, {
+    include: [{
+      model: User,
+      as: 'user'
+    }],
+    exclude: ['createdAt', 'updatedAt']
+  });
   if (course) {
     res.status(200).json(course);
   } else {
@@ -85,7 +87,7 @@ router.get('/courses/:id', asyncHandler(async (req,res) => {
 }));
 
 // POST route that will create a new course, set the Location header to the URI for the newly created course, and return a 201 HTTP status code and no content.
-router.post('/courses', asyncHandler(async (req,res) => {
+router.post('/courses', authenticateUser, asyncHandler(async (req,res) => {
   try {
     const course = req.body;
     const errors = [];
@@ -113,27 +115,33 @@ router.post('/courses', asyncHandler(async (req,res) => {
 }));
 
 // PUT route that will update a specific course 
-router.put('/courses/:id', asyncHandler(async (req,res) => {
+router.put('/courses/:id', authenticateUser, asyncHandler(async (req,res) => {
+  const user = req.currentUser;
+  console.log(user.id);
   const course = await Course.findByPk(req.params.id);
-  // console.log(req.body);
   if (course) {
-    const newCourse = req.body;
-    const errors = [];
-    if (!newCourse.title) {
-      errors.push('Please provide a course title');
-    }
-    if (!newCourse.description) {
-      errors.push('Please provide a course description')
-    }
-    if (errors.length > 0) {
-      res.status(400).json({ errors });
+    console.log(course.userId);
+    if (course.userId === user.id) {
+      const newCourse = req.body;
+      const errors = [];
+      if (!newCourse.title) {
+        errors.push('Please provide a course title');
+      }
+      if (!newCourse.description) {
+        errors.push('Please provide a course description')
+      }
+      if (errors.length > 0) {
+        res.status(400).json({ errors });
+      } else {
+        course.title = newCourse.title;
+        course.description = newCourse.description;
+        course.estimatedTime = newCourse.estimatedTime;
+        course.materialsNeeded = newCourse.materialsNeeded;
+        await course.save();
+        res.status(204).end();
+      }
     } else {
-      course.title = newCourse.title;
-      course.description = newCourse.description;
-      course.estimatedTime = newCourse.estimatedTime;
-      course.materialsNeeded = newCourse.materialsNeeded;
-      await course.save();
-      res.status(204).end();
+      res.status(403);
     }
   } else {
     res.status(404).json({ "message": "Page not found" });
@@ -141,7 +149,7 @@ router.put('/courses/:id', asyncHandler(async (req,res) => {
 }));
 
 // DELETE route that will delete a specific course 
-router.delete('/courses/:id', asyncHandler(async (req,res) => {
+router.delete('/courses/:id', authenticateUser, asyncHandler(async (req,res) => {
   const course = await Course.findByPk(req.params.id);
   if (course) {
     await course.destroy();

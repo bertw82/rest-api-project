@@ -35,27 +35,15 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
     },
     estimatedTime: {
-      type: DataTypes.STRING,
-      allowNull: false
+      type: DataTypes.STRING
     },
     materialsNeeded: {
-      type: DataTypes.STRING,
-      allowNull: false
+      type: DataTypes.STRING
     }
   }, {
     sequelize,
     modelName: 'Course',
   });
-
-  // Course.associate = (models) => {
-  //   Course.belongsTo(models.User, {
-  //     as: 'user',
-  //     foreignKey: {
-  //       fieldName: 'userId',
-  //       allowNull: false,
-  //     }
-  //   })
-  // };
 
   return Course;
 };
